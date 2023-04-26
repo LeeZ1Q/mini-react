@@ -1,19 +1,9 @@
 import { createElement, render } from './mini-react';
  
-const handleInput = (e) => {
-  renderer(e.target.value);
-};
-
-const renderer = (value) => {
-  const container = document.getElementById('root');
-  const element = createElement(
-    'div',
-    null,
-    createElement('input', { oninput: (e) => handleInput(e) }, null),
-    createElement('h1', null, value),
-  );
-  render(element, container);
+const App = (props) => {
+  return createElement('h1', null,'Hi',props.name);
 }
 
-
-renderer('hello');
+const container = document.getElementById('root');
+const element = createElement(App,{name:'Lee'});
+render(element, container);

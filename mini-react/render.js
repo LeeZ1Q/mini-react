@@ -50,14 +50,21 @@ function commitWork(fiber) {
 	if (!fiber) {
 		return;
 	}
+
+	// 找到最近的有dom的fiber
+	let parentDOMFiber = fiber.parent;
+	while (!parentDOMFiber.dom) {
+		parentDOMFiber = parentDOMFiber.parent;
+	}
 	// 找到父元素
-	const parentDOM = fiber.parent.dom;
+	const parentDOM = parentDOMFiber.dom;
+
 	if (fiber.effectTag === "PLACEMENT" && fiber.dom != null) {
 		// 添加元素
 		parentDOM.appendChild(fiber.dom);
 	} else if (fiber.effectTag === "DELETION" && fiber.dom != null) {
 		// 删除元素
-		parentDOM.removeChild(fiber.dom);
+		commitDeletion(fiber, parentDOM)
 	} else if (fiber.effectTag === "UPDATE" && fiber.dom != null) {
 		// 更新元素
 		updateDOM(fiber.dom, fiber.alternate.props, fiber.props);
@@ -67,6 +74,15 @@ function commitWork(fiber) {
 	commitWork(fiber.child);
 	// 递归兄弟元素
 	commitWork(fiber.sibling);
+}
+
+// 删除元素
+function commitDeletion(fiber, parentDOM) {
+	if (fiber.dom) {
+		parentDOM.removeChild(fiber.dom);
+	} else {
+		commitDeletion(fiber.child, parentDOM);
+	}
 }
 
 // 更新props
@@ -136,19 +152,16 @@ requestIdleCallback(workLoop);
 
 // 任务执行
 function performUnitOfWork(fiber) {
-	// 创建元素
-	if (!fiber.dom) {
-		fiber.dom = createDOM(fiber);
+
+
+	const isFunctionComponent = fiber.type instanceof Function;
+	if (isFunctionComponent) {
+		updateFunctionComponent(fiber);
+	} else {
+		updateHostComponent(fiber);
 	}
 
-	// 创建子任务 (fiber)
-	const elements = fiber.props.children;
-	// 新建newFiber，添加到fiber树上
-	reconcileChildren(fiber, elements);
-
-
-	//  返回下一个任务
-	//  先找儿子
+	//  返回下一个任务  先找儿子
 	if (fiber.child) {
 		return fiber.child;
 	}
@@ -160,6 +173,24 @@ function performUnitOfWork(fiber) {
 		}
 		nextFiber = nextFiber.parent;
 	}
+}
+
+// 非函数组件更新
+function updateHostComponent(fiber) {
+		// 创建元素
+		if (!fiber.dom) {
+			fiber.dom = createDOM(fiber);
+		}
+		// 创建子任务 (fiber)
+	const elements = fiber.props.children;
+	// 新建newFiber，添加到fiber树上
+	reconcileChildren(fiber, elements);
+}
+
+// 函数组件更新
+function updateFunctionComponent(fiber) {
+	const children = [fiber.type(fiber.props)];
+	reconcileChildren(fiber, children);
 }
 
 // fiber diff
