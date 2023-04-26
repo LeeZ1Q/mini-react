@@ -26,16 +26,22 @@ function render(element, container) {
 		sibling: null,
 		child: null,
 		parent: null,
+		alternate: currentRoot,
 	};
+	deletions = [];
 	nextUnitOfWork = wipRoot;
 }
 
 let nextUnitOfWork = null;
 let wipRoot = null;
+let currentRoot = null;
+let deletions = null;
 
 // 提交阶段
 function commitRoot() {
+	deletions.forEach(commitWork);
 	commitWork(wipRoot.child);
+	currentRoot = wipRoot;
 	wipRoot = null;
 }
 
@@ -46,12 +52,62 @@ function commitWork(fiber) {
 	}
 	// 找到父元素
 	const parentDOM = fiber.parent.dom;
-	// 添加元素
-	parentDOM.appendChild(fiber.dom);
+	if (fiber.effectTag === "PLACEMENT" && fiber.dom != null) {
+		// 添加元素
+		parentDOM.appendChild(fiber.dom);
+	} else if (fiber.effectTag === "DELETION" && fiber.dom != null) {
+		// 删除元素
+		parentDOM.removeChild(fiber.dom);
+	} else if (fiber.effectTag === "UPDATE" && fiber.dom != null) {
+		// 更新元素
+		updateDOM(fiber.dom, fiber.alternate.props, fiber.props);
+	}
+
 	// 递归子元素
 	commitWork(fiber.child);
 	// 递归兄弟元素
 	commitWork(fiber.sibling);
+}
+
+// 更新props
+function updateDOM(dom, prevProps, nextProps) {
+	const isEvent = (key) => key.startsWith("on");
+	// 删除已经不存在或者变化的事件处理函数
+	Object.keys(prevProps)
+		.filter(isEvent)
+		.filter((key) => !(key in nextProps) || nextProps[key] !== prevProps[key])
+		.forEach((key) => {
+			const eventType = key.toLowerCase().substring(2);
+			dom.removeEventListener(eventType, prevProps[key]);
+		});
+
+	// 添加或更新事件处理函数
+	Object.keys(nextProps)
+		.filter(isEvent)
+		.filter((key) => !(key in prevProps) || nextProps[key] !== prevProps[key])
+		.forEach((key) => {
+			const eventType = key.toLowerCase().substring(2);
+			dom.addEventListener(eventType, nextProps[key]);
+		});
+
+
+
+	// 删除已经不存在props
+	Object.keys(prevProps)
+		.filter((key) => key !== "children")
+		.filter((key) => !(key in nextProps))
+		.forEach((key) => {
+			dom[key] = "";
+		});
+
+	// 更新或添加props
+	Object.keys(nextProps)
+		.filter((key) => key !== "children")
+		.filter((key) => prevProps[key] !== nextProps[key])
+		.forEach((key) => {
+			dom[key] = nextProps[key];
+		});
+
 }
 
 // 调度函数
@@ -87,34 +143,9 @@ function performUnitOfWork(fiber) {
 
 	// 创建子任务 (fiber)
 	const elements = fiber.props.children;
-	let index = 0;
-	let prevSibling = null;
+	// 新建newFiber，添加到fiber树上
+	reconcileChildren(fiber, elements);
 
-	// 建立Fiber Tree
-	while (index < elements.length) {
-		const element = elements[index];
-		// 创建子任务
-		const newFiber = {
-			type: element.type,
-			props: element.props,
-			dom: null,
-			parent: fiber,
-			sibling: null,
-			child: null,
-		};
-
-		// 构建链表结构
-		// 如果是第一个
-		if (index === 0) {
-			// 你就是儿子
-			fiber.child = newFiber;
-		} else {
-			// 否则你就是兄弟
-			prevSibling.sibling = newFiber;
-		}
-		prevSibling = newFiber;
-		index++;
-	}
 
 	//  返回下一个任务
 	//  先找儿子
@@ -129,6 +160,69 @@ function performUnitOfWork(fiber) {
 		}
 		nextFiber = nextFiber.parent;
 	}
+}
+
+// fiber diff
+function reconcileChildren(wipFiber, elements){
+		let index = 0;
+		let oldFiber = wipFiber.alternate && wipFiber.alternate.child;
+		let prevSibling = null;
+
+		while(index < elements.length || oldFiber != null ){
+				const element = elements[index];
+				let newFiber = null;
+
+				const sameType = oldFiber && element && element.type === oldFiber.type;
+
+				if(sameType){
+						// 更新节点
+						newFiber = {
+								type: oldFiber.type,
+								props: element.props,
+								// 继承旧节点的 dom 性能优化
+								dom: oldFiber.dom,
+								parent: wipFiber,
+								alternate: oldFiber,
+								effectTag: 'UPDATE',
+								sibling: null,
+								child: null,
+						}
+				}
+
+				if(element && !sameType){
+						// 新建节点
+						newFiber = {
+								type: element.type,
+								props: element.props,
+								dom: null,
+								parent: wipFiber,
+								alternate: null,
+								effectTag: 'PLACEMENT',
+								sibling: null,
+								child: null,
+						}
+				}
+
+				if(oldFiber && !sameType){
+						// 删除节点
+						oldFiber.effectTag = 'DELETION';
+						deletions.push(oldFiber);
+				}
+
+				if(oldFiber){
+						oldFiber = oldFiber.sibling;
+				}
+
+				if(index === 0){
+						wipFiber.child = newFiber;
+				}else{
+						prevSibling.sibling = newFiber;
+				}
+
+				prevSibling = newFiber;
+				index++;
+		}
+
 }
 
 export default render;

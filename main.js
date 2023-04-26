@@ -1,14 +1,19 @@
 import { createElement, render } from './mini-react';
  
+const handleInput = (e) => {
+  renderer(e.target.value);
+};
 
-const element = createElement(
-  'h1',
-  {id: 'title', style : 'background:orange'},
-  'Hello',
-  createElement('a',{href: 'https://bilibili.com',style:'color:yellow'},'bilibili')
-);
+const renderer = (value) => {
+  const container = document.getElementById('root');
+  const element = createElement(
+    'div',
+    null,
+    createElement('input', { oninput: (e) => handleInput(e) }, null),
+    createElement('h1', null, value),
+  );
+  render(element, container);
+}
 
-const container = document.getElementById('root');
-render(element, container);
 
-console.log(element);
+renderer('hello');
